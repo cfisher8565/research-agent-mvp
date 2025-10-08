@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import { query } from '@anthropic-ai/claude-agent-sdk';
+import { testMCPConnection, MCP_TOOLS } from './mcp-client.js';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -8,10 +9,14 @@ const PORT = process.env.PORT || 8080;
 app.use(express.json());
 
 // Health check endpoint
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', async (req: Request, res: Response) => {
+  // Test MCP connection
+  const mcpStatus = await testMCPConnection();
+
   res.json({
     status: 'healthy',
     agent: 'research-mvp',
+    mcp: mcpStatus,
     timestamp: new Date().toISOString()
   });
 });
@@ -34,10 +39,33 @@ app.post('/query', async (req: Request, res: Response) => {
     // Context optimized: only capture final result message
     let finalResult = 'No result available';
 
+    // Instead of using SDK's mcpServers (stdio only), use direct HTTP calls
+    const mcpContext = `
+You have access to 10 MCP tools via HTTP:
+
+**Context7 (2 tools):**
+- Use MCP_TOOLS.context7.resolveLibraryId(libraryName) to search for libraries
+- Use MCP_TOOLS.context7.getLibraryDocs(libraryId, topic?, tokens?) for documentation
+
+**Perplexity (4 tools):**
+- Use MCP_TOOLS.perplexity.search(query) for web search
+- Use MCP_TOOLS.perplexity.ask(query) for Q&A
+- Use MCP_TOOLS.perplexity.research(query) for deep research
+- Use MCP_TOOLS.perplexity.reason(query) for complex analysis
+
+**BrightData (4 tools):**
+- Use MCP_TOOLS.brightdata.searchEngine(query, engine?) for SERP
+- Use MCP_TOOLS.brightdata.scrapeAsMarkdown(url) to scrape pages
+- Use MCP_TOOLS.brightdata.scrapeBatch(urls) for batch scraping
+- Use MCP_TOOLS.brightdata.searchEngineBatch(queries) for batch search
+
+These tools are accessed via direct HTTP calls to the MCP server.
+`;
+
     for await (const message of query({
-      prompt,
+      prompt: prompt + '\n\n' + mcpContext,
       options: {
-        // Specialized system prompt for research expertise
+        // Simplified system prompt - no MCP SDK config needed
         systemPrompt: `You are a specialized Research Agent with expert knowledge of three powerful research tools:
 
 1. **Context7** (@context7/mcp-server): Library documentation lookup
@@ -71,10 +99,14 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
         permissionMode: 'bypassPermissions',
 
         mcpServers: {
-          // ALL 10 tools via single Streamable HTTP endpoint
+          // stdio proxy that forwards to HTTP MCP server
           unified: {
-            type: 'http',
-            url: process.env.MCP_SERVERS_URL || 'https://mcp-servers-app-ng8oh.ondigitalocean.app/mcp'
+            type: 'stdio',
+            command: 'node',
+            args: ['./dist/mcp-proxy.js'],
+            env: {
+              MCP_SERVERS_URL: process.env.MCP_SERVERS_URL || 'https://mcp-servers-app-ng8oh.ondigitalocean.app/mcp'
+            }
           }
         }
         // No allowedTools = all tools available
