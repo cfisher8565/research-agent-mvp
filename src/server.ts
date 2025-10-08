@@ -42,6 +42,98 @@ app.get('/health', async (req: Request, res: Response) => {
   });
 });
 
+// Debug endpoint - validate environment and MCP connectivity
+app.get('/debug', async (req: Request, res: Response) => {
+  const fs = await import('fs');
+  const { spawn } = await import('child_process');
+  const path = await import('path');
+
+  const diagnostics: any = {
+    timestamp: new Date().toISOString(),
+    environment: {
+      nodeVersion: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      cwd: process.cwd(),
+      home: process.env.HOME,
+      nodeEnv: process.env.NODE_ENV
+    },
+    apiKeys: {
+      anthropic: !!process.env.ANTHROPIC_API_KEY,
+      mcpSecret: !!process.env.MCP_SHARED_SECRET
+    },
+    mcp: {
+      gatewayUrl: process.env.MCP_GATEWAY_URL,
+      configured: !!process.env.MCP_GATEWAY_URL
+    },
+    filesystem: {
+      tmpExists: fs.existsSync('/tmp'),
+      tmpWritable: false,
+      claudeDirExists: fs.existsSync('/app/.claude'),
+      homeWritable: false
+    }
+  };
+
+  // Test filesystem write permissions
+  try {
+    fs.writeFileSync('/tmp/test.txt', 'test');
+    fs.unlinkSync('/tmp/test.txt');
+    diagnostics.filesystem.tmpWritable = true;
+  } catch (e: any) {
+    diagnostics.filesystem.tmpError = e.message;
+  }
+
+  try {
+    fs.writeFileSync('/app/.claude/test.txt', 'test');
+    fs.unlinkSync('/app/.claude/test.txt');
+    diagnostics.filesystem.homeWritable = true;
+  } catch (e: any) {
+    diagnostics.filesystem.homeError = e.message;
+  }
+
+  // Test cli.js spawn
+  const cliPath = path.join(process.cwd(), 'node_modules/@anthropic-ai/claude-agent-sdk/cli.js');
+  diagnostics.cli = {
+    cliJsExists: fs.existsSync(cliPath),
+    cliJsPath: cliPath,
+    spawnTest: 'not_run'
+  };
+
+  if (diagnostics.cli.cliJsExists) {
+    await new Promise<void>((resolve) => {
+      const child = spawn('node', [cliPath, '--version'], {
+        cwd: process.cwd(),
+        env: process.env,
+        timeout: 5000
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      child.stdout?.on('data', (data) => { stdout += data.toString(); });
+      child.stderr?.on('data', (data) => { stderr += data.toString(); });
+
+      child.on('close', (code) => {
+        diagnostics.cli.spawnTest = {
+          exitCode: code,
+          stdout: stdout.trim(),
+          stderr: stderr.trim(),
+          success: code === 0
+        };
+        resolve();
+      });
+
+      setTimeout(() => {
+        child.kill();
+        diagnostics.cli.spawnTest = { timeout: true };
+        resolve();
+      }, 5000);
+    });
+  }
+
+  res.json(diagnostics);
+});
+
 // Main query endpoint with timeout protection
 app.post('/query', async (req: Request, res: Response) => {
   const startTime = Date.now();
@@ -57,10 +149,18 @@ app.post('/query', async (req: Request, res: Response) => {
     }
 
     console.log(`[Query] Received: ${prompt.substring(0, 100)}...`);
+    console.log(`[Query] Environment check:`, {
+      apiKey: !!process.env.ANTHROPIC_API_KEY,
+      mcpGateway: !!process.env.MCP_GATEWAY_URL,
+      mcpSecret: !!process.env.MCP_SHARED_SECRET,
+      home: process.env.HOME,
+      cwd: process.cwd()
+    });
 
     // Call Claude Agent SDK with native HTTP MCP support
     let finalResult = 'No result available';
 
+    console.log(`[Query] Initializing Claude Agent SDK...`);
     const queryIterator = query({
       prompt: prompt,
       options: {
@@ -112,6 +212,7 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
     });
 
     // Wrap with timeout protection
+    console.log(`[Query] Wrapping with ${TIMEOUTS.QUERY_TOTAL}ms timeout...`);
     const timeoutIterator = withTimeout(
       queryIterator,
       TIMEOUTS.QUERY_TOTAL,
@@ -121,7 +222,9 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
     );
 
     // Iterate with timeout protection
+    console.log(`[Query] Starting iteration...`);
     for await (const message of timeoutIterator) {
+      console.log(`[Agent] Message received:`, { type: message.type, subtype: (message as any).subtype });
       // Context optimization: only capture the final result message
       if (message.type === 'result' && message.subtype === 'success') {
         finalResult = (message as any).result;
@@ -145,7 +248,17 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
 
   } catch (error: any) {
     const elapsed = Date.now() - startTime;
-    console.error(`[Error] Query failed after ${elapsed}ms:`, error);
+    console.error(`[Error] Query failed after ${elapsed}ms`);
+    console.error(`[Error] Message:`, error.message);
+    console.error(`[Error] Name:`, error.name);
+    console.error(`[Error] Stack:`, error.stack);
+
+    // Log additional context for SDK errors
+    if (error.message?.includes('Claude Code process')) {
+      console.error(`[Error] SDK subprocess failure detected`);
+      console.error(`[Error] Check if cli.js can access ANTHROPIC_API_KEY`);
+      console.error(`[Error] Check if HOME directory is writable`);
+    }
 
     // Distinguish timeout errors from other errors
     const isTimeout = error.message?.includes('timed out');

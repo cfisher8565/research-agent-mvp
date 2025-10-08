@@ -2,8 +2,11 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-# Install Claude Code CLI globally (required by @anthropic-ai/claude-agent-sdk)
-RUN npm install -g @anthropic-ai/claude-code
+# Set HOME directory for SDK cli.js subprocess
+ENV HOME=/app
+
+# Create writable directories for SDK temporary files and configuration
+RUN mkdir -p /tmp /app/.claude && chmod 1777 /tmp
 
 # Copy package files
 COPY package*.json ./
