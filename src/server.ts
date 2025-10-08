@@ -54,7 +54,7 @@ app.post('/query', async (req: Request, res: Response) => {
           perplexity: {
             type: 'stdio',
             command: 'npx',
-            args: ['-y', '@perplexity/mcp-server'],
+            args: ['-y', '@modelcontextprotocol/server-perplexity'],
             env: {
               PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY || ''
             }
