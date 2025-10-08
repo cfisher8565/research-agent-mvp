@@ -23,9 +23,12 @@ rl.on('line', async (line) => {
   try {
     const request = JSON.parse(line);
 
-    // Forward to HTTP MCP server
+    // Forward to HTTP MCP server (Streamable HTTP requires SSE Accept header)
     const response = await axios.post(MCP_SERVER_URL, request, {
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream'
+      },
       timeout: 30000
     });
 

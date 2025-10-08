@@ -31,12 +31,18 @@ interface MCPResponse {
  */
 export async function callMCPTool(toolName: string, args: any): Promise<any> {
   try {
+    // Streamable HTTP requires SSE Accept header
+    const headers = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json, text/event-stream'
+    };
+
     // List tools first to verify availability
     const listResponse = await axios.post<MCPResponse>(MCP_SERVER_URL, {
       jsonrpc: '2.0',
       id: 1,
       method: 'tools/list'
-    });
+    }, { headers });
 
     if (listResponse.data.error) {
       throw new Error(`MCP tools/list failed: ${listResponse.data.error.message}`);
@@ -51,7 +57,7 @@ export async function callMCPTool(toolName: string, args: any): Promise<any> {
         name: toolName,
         arguments: args
       }
-    });
+    }, { headers });
 
     if (callResponse.data.error) {
       throw new Error(`MCP tool ${toolName} failed: ${callResponse.data.error.message}`);
@@ -120,6 +126,11 @@ export async function testMCPConnection(): Promise<{success: boolean, toolCount:
       jsonrpc: '2.0',
       id: 1,
       method: 'tools/list'
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream'
+      }
     });
 
     if (response.data.error) {
