@@ -1,8 +1,16 @@
 /**
- * Direct HTTP client for MCP Servers App (Streamable HTTP transport)
+ * ⚠️ DEPRECATED - This file is no longer needed
  *
- * The Claude Agent SDK only supports stdio MCP servers, not HTTP.
- * This wrapper makes direct HTTP calls to our deployed MCP servers.
+ * As of October 1, 2025, Claude Agent SDK supports native HTTP MCP connections.
+ * See src/server.ts for the new implementation using:
+ *
+ * mcpServers: {
+ *   context7: { type: 'http', url: '...', headers: {...} },
+ *   perplexity: { type: 'http', url: '...', headers: {...} },
+ *   brightdata: { type: 'http', url: '...', headers: {...} }
+ * }
+ *
+ * This file is kept for reference only.
  */
 
 import axios from 'axios';

@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 /**
- * stdio → HTTP MCP Proxy Server
+ * ⚠️ DEPRECATED - stdio → HTTP MCP Proxy Server
  *
- * Bridges Claude Agent SDK (stdio only) to our HTTP MCP servers.
- * Reads JSON-RPC from stdin, forwards to HTTP, writes response to stdout.
+ * This proxy is NO LONGER NEEDED as of October 1, 2025.
+ * Claude Agent SDK now supports native HTTP MCP connections.
+ *
+ * Previously: Bridged Claude Agent SDK (stdio only) to HTTP MCP servers.
+ * Now: Use native HTTP support in src/server.ts instead.
+ *
+ * This file is kept for reference only.
  */
 
 import { stdin, stdout } from 'process';
