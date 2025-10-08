@@ -1,7 +1,6 @@
 import express, { Request, Response } from 'express';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { withTimeout } from './utils/timeout';
-import axios from 'axios';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -306,9 +305,6 @@ app.post('/query', async (req: Request, res: Response) => {
   const originalNodeOptions = process.env.NODE_OPTIONS;
   const originalVscodeOptions = process.env.VSCODE_INSPECTOR_OPTIONS;
 
-  // Declare variables outside try block for error handler access
-  let messageCount = 0;
-
   try {
     const { prompt } = req.body;
 
@@ -339,12 +335,34 @@ app.post('/query', async (req: Request, res: Response) => {
 
     // Call Claude Agent SDK with native HTTP MCP support
     let finalResult = 'No result available';
+    let messageCount = 0;  // Declare outside try block for error access
 
     console.log(`[Query] Initializing Claude Agent SDK...`);
+
+    // Track SDK lifecycle events
+    const sdkEvents: string[] = [];
 
     const queryIterator = query({
       prompt: prompt,
       options: {
+        // Diagnostic hooks to capture SDK lifecycle
+        hooks: {
+          sessionStart: async (ctx: any) => {
+            const event = `[Hook:SessionStart] Session ${ctx.session_id || 'unknown'} initialized`;
+            sdkEvents.push(event);
+            console.log(event);
+          },
+          onError: async (errCtx: any) => {
+            const event = `[Hook:OnError] ${errCtx.error?.message || 'Unknown error'}`;
+            sdkEvents.push(event);
+            console.error(event, {
+              error: errCtx.error,
+              stack: errCtx.error?.stack,
+              sessionId: errCtx.session_id
+            });
+          }
+        },
+
         // Simplified system prompt - native HTTP MCP support
         systemPrompt: `You are a specialized Research Agent with expert knowledge of three powerful research tools:
 
@@ -431,11 +449,8 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
         break;
       }
 
-      if (message.type === 'stream_event') {
-        const streamEvent = message as any;
-        if (streamEvent.event?.type === 'error') {
-          console.error('[Agent] Stream error event:', streamEvent.event);
-        }
+      if (message.type === 'error') {
+        console.error('[Agent] Error message:', (message as any).error);
       }
     }
 
@@ -454,8 +469,7 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
         result: finalResult
       },
       metadata: {
-        elapsed_ms: elapsed,
-        messageCount: messageCount
+        elapsed_ms: elapsed
       }
     });
 
@@ -487,7 +501,8 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
       metadata: {
         elapsed_ms: elapsed,
         timeout_threshold_ms: isTimeout ? TIMEOUTS.QUERY_TOTAL : undefined,
-        messageCount: messageCount
+        sdkEvents: sdkEvents,  // Include captured lifecycle events
+        messageCount: messageCount || 0
       }
     });
   }
