@@ -71,34 +71,10 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
         permissionMode: 'bypassPermissions',
 
         mcpServers: {
-          // Context7 - Library documentation (pre-installed)
-          context7: {
-            type: 'stdio',
-            command: 'node',
-            args: ['./node_modules/@context7/mcp-server/dist/index.js'],
-            env: {
-              CONTEXT7_API_KEY: process.env.CONTEXT7_API_KEY || ''
-            }
-          },
-          // Perplexity - AI-powered research (pre-installed)
-          perplexity: {
-            type: 'stdio',
-            command: 'node',
-            args: ['./node_modules/@perplexity-ai/mcp-server/dist/index.js'],
-            env: {
-              PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY || ''
-            }
-          },
-          // BrightData - Web scraping and SERP (pre-installed)
-          brightdata: {
-            type: 'stdio',
-            command: 'npx',
-            args: ['-y', '@brightdata/mcp@latest'],
-            env: {
-              API_TOKEN: process.env.BRIGHTDATA_API_TOKEN || '',
-              MCP_UNLOCKER: process.env.BRIGHTDATA_API_TOKEN || '',
-              MCP_BROWSER: process.env.BRIGHTDATA_API_TOKEN || ''
-            }
+          // ALL 10 tools via single Streamable HTTP endpoint
+          unified: {
+            type: 'http',
+            url: process.env.MCP_SERVERS_URL || 'https://mcp-servers-app-ng8oh.ondigitalocean.app/mcp'
           }
         }
         // No allowedTools = all tools available
