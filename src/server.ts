@@ -4,6 +4,16 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// Global error handlers
+process.on('unhandledRejection', (reason) => {
+  console.error('[Unhandled Rejection]', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('[Uncaught Exception]', error);
+  // Don't exit in production - let health checks handle it
+});
+
 // Middleware
 app.use(express.json());
 
@@ -11,11 +21,9 @@ app.use(express.json());
 app.get('/health', async (req: Request, res: Response) => {
   // Check required environment variables
   const mcpStatus = {
-    success: !!(process.env.CONTEXT7_API_KEY && process.env.MCP_SHARED_SECRET),
+    success: !!(process.env.MCP_GATEWAY_URL && process.env.MCP_SHARED_SECRET),
     configured: {
-      context7: !!process.env.CONTEXT7_API_KEY,
-      perplexity: !!process.env.PERPLEXITY_MCP_URL,
-      brightdata: !!process.env.BRIGHTDATA_MCP_URL,
+      gateway: !!process.env.MCP_GATEWAY_URL,
       sharedSecret: !!process.env.MCP_SHARED_SECRET
     }
   };
@@ -83,29 +91,13 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
         permissionMode: 'bypassPermissions',
 
         // Native HTTP MCP support (Claude Agent SDK Oct 1, 2025+)
+        // Single gateway aggregates all MCP tools (Context7, Perplexity, BrightData)
         mcpServers: {
-          // Context7 (hosted MCP server)
-          context7: {
-            type: 'http',
-            url: 'https://mcp.context7.com/mcp',
+          "mcp-gateway": {
+            type: "http",
+            url: process.env.MCP_GATEWAY_URL || "https://mcp-infrastructure-rhvlk.ondigitalocean.app/mcp",
             headers: {
-              'Authorization': `Bearer ${process.env.CONTEXT7_API_KEY}`
-            }
-          },
-          // Perplexity (self-hosted MCP server)
-          perplexity: {
-            type: 'http',
-            url: process.env.PERPLEXITY_MCP_URL || 'http://perplexity-mcp:8802/mcp',
-            headers: {
-              'X-MCP-Secret': process.env.MCP_SHARED_SECRET || ''
-            }
-          },
-          // BrightData (self-hosted MCP server)
-          brightdata: {
-            type: 'http',
-            url: process.env.BRIGHTDATA_MCP_URL || 'http://brightdata-mcp:8803/mcp',
-            headers: {
-              'X-MCP-Secret': process.env.MCP_SHARED_SECRET || ''
+              "X-MCP-Secret": process.env.MCP_SHARED_SECRET || ""
             }
           }
         }
