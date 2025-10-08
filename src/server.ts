@@ -30,7 +30,7 @@ app.post('/query', async (req: Request, res: Response) => {
 
     console.log(`[Query] Received: ${prompt}`);
 
-    // Call Claude Agent SDK with Context7 MCP server
+    // Call Claude Agent SDK with ALL MCP servers: Context7, Perplexity, BrightData
     // Context optimized: only capture final result message
     let finalResult = 'No result available';
 
@@ -38,16 +38,38 @@ app.post('/query', async (req: Request, res: Response) => {
       prompt,
       options: {
         mcpServers: {
+          // Context7 - Library documentation
           context7: {
             type: 'stdio',
             command: 'npx',
-            args: ['-y', '@context7/mcp-server']
+            args: ['-y', '@context7/mcp-server'],
+            env: {
+              CONTEXT7_API_KEY: process.env.CONTEXT7_API_KEY || ''
+            }
+          },
+          // Perplexity - AI-powered research
+          perplexity: {
+            type: 'stdio',
+            command: 'npx',
+            args: ['-y', '@perplexity/mcp-server'],
+            env: {
+              PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY || ''
+            }
+          },
+          // BrightData - Web scraping and SERP
+          brightdata: {
+            type: 'stdio',
+            command: 'npx',
+            args: ['-y', '@brightdata/mcp@latest'],
+            env: {
+              API_TOKEN: process.env.BRIGHTDATA_API_TOKEN || '',
+              MCP_UNLOCKER: process.env.BRIGHTDATA_API_TOKEN || '',
+              MCP_BROWSER: process.env.BRIGHTDATA_API_TOKEN || ''
+            }
           }
-        },
-        allowedTools: [
-          'mcp__context7__resolve-library-id',
-          'mcp__context7__get-library-docs'
-        ]
+        }
+        // Allow ALL tools from all MCP servers
+        // No allowedTools restriction = full access
       }
     })) {
       // Context optimization: only capture the final result message
