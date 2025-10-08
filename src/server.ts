@@ -31,7 +31,8 @@ app.post('/query', async (req: Request, res: Response) => {
     console.log(`[Query] Received: ${prompt}`);
 
     // Call Claude Agent SDK with Context7 MCP server
-    const messages: any[] = [];
+    // Context optimized: only capture final result message
+    let finalResult = 'No result available';
 
     for await (const message of query({
       prompt,
@@ -49,27 +50,21 @@ app.post('/query', async (req: Request, res: Response) => {
         ]
       }
     })) {
-      messages.push(message);
-
-      // Log progress
-      if (message.type === 'assistant') {
-        console.log('[Agent] Assistant message received');
+      // Context optimization: only capture the final result message
+      // This is the actual result from the SDK, not streaming tokens
+      if (message.type === 'result' && message.subtype === 'success') {
+        finalResult = (message as any).result;
+        console.log('[Agent] Final result captured');
+        break; // Exit immediately after getting result
       }
     }
 
-    // Extract final result
-    const lastMessage = messages[messages.length - 1];
-    const result = lastMessage?.type === 'result'
-      ? lastMessage.result
-      : 'No result available';
-
-    console.log(`[Query] Completed successfully`);
+    console.log(`[Query] Completed`);
 
     res.json({
       success: true,
       data: {
-        result,
-        messageCount: messages.length
+        result: finalResult
       }
     });
 
