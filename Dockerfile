@@ -2,6 +2,9 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+# Install Claude Code CLI globally (required by @anthropic-ai/claude-agent-sdk)
+RUN npm install -g @anthropic-ai/claude-code
+
 # Copy package files
 COPY package*.json ./
 
