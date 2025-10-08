@@ -37,6 +37,9 @@ app.post('/query', async (req: Request, res: Response) => {
     for await (const message of query({
       prompt,
       options: {
+        // Full tool access - bypass all permission checks
+        permissionMode: 'bypassPermissions',
+
         mcpServers: {
           // Context7 - Library documentation
           context7: {
@@ -68,8 +71,8 @@ app.post('/query', async (req: Request, res: Response) => {
             }
           }
         }
-        // Allow ALL tools from all MCP servers
-        // No allowedTools restriction = full access
+        // No allowedTools = all tools available
+        // permissionMode: 'bypassPermissions' = no permission prompts
       }
     })) {
       // Context optimization: only capture the final result message
