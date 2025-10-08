@@ -160,6 +160,11 @@ app.get('/debug', async (req: Request, res: Response) => {
 app.post('/query', async (req: Request, res: Response) => {
   const startTime = Date.now();
 
+  // CRITICAL FIX: Clean debugger environment variables that interfere with subprocess
+  // GitHub Issue #4619: VSCode debugger variables cause "exit code 1" failures
+  const originalNodeOptions = process.env.NODE_OPTIONS;
+  const originalVscodeOptions = process.env.VSCODE_INSPECTOR_OPTIONS;
+
   try {
     const { prompt } = req.body;
 
@@ -171,12 +176,21 @@ app.post('/query', async (req: Request, res: Response) => {
     }
 
     console.log(`[Query] Received: ${prompt.substring(0, 100)}...`);
+
+    // Clean debugger variables before SDK subprocess spawn
+    delete process.env.NODE_OPTIONS;
+    delete process.env.VSCODE_INSPECTOR_OPTIONS;
+
     console.log(`[Query] Environment check:`, {
       apiKey: !!process.env.ANTHROPIC_API_KEY,
       mcpGateway: !!process.env.MCP_GATEWAY_URL,
       mcpSecret: !!process.env.MCP_SHARED_SECRET,
       home: process.env.HOME,
-      cwd: process.cwd()
+      cwd: process.cwd(),
+      cleanedDebugVars: {
+        nodeOptions: originalNodeOptions ? 'removed' : 'not set',
+        vscodeOptions: originalVscodeOptions ? 'removed' : 'not set'
+      }
     });
 
     // Call Claude Agent SDK with native HTTP MCP support
@@ -258,6 +272,10 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
     const elapsed = Date.now() - startTime;
     console.log(`[Query] Completed successfully in ${elapsed}ms`);
 
+    // Restore original environment variables
+    if (originalNodeOptions) process.env.NODE_OPTIONS = originalNodeOptions;
+    if (originalVscodeOptions) process.env.VSCODE_INSPECTOR_OPTIONS = originalVscodeOptions;
+
     res.json({
       success: true,
       data: {
@@ -269,6 +287,9 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
     });
 
   } catch (error: any) {
+    // Restore original environment variables on error too
+    if (originalNodeOptions) process.env.NODE_OPTIONS = originalNodeOptions;
+    if (originalVscodeOptions) process.env.VSCODE_INSPECTOR_OPTIONS = originalVscodeOptions;
     const elapsed = Date.now() - startTime;
     console.error(`[Error] Query failed after ${elapsed}ms`);
     console.error(`[Error] Message:`, error.message);
