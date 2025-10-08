@@ -1,0 +1,50 @@
+# DigitalOcean App Platform Spec for Research Agent MVP
+# Deploy with: doctl apps create --spec .do/app.yaml
+
+name: research-agent-mvp
+region: fra
+
+services:
+  - name: research-agent
+    # Use Dockerfile for build
+    dockerfile_path: Dockerfile
+    source_dir: /
+
+    # GitHub source
+    github:
+      repo: charliefisher/research-agent-mvp
+      branch: main
+      deploy_on_push: true
+
+    # Environment variables
+    envs:
+      - key: CLAUDE_CODE_OAUTH_TOKEN
+        scope: RUN_TIME
+        type: SECRET
+        value: "YOUR_CLAUDE_OAUTH_TOKEN_HERE"
+      - key: PORT
+        scope: RUN_TIME
+        value: "8080"
+      - key: NODE_ENV
+        scope: RUN_TIME
+        value: "production"
+
+    # HTTP port configuration
+    http_port: 8080
+
+    # Health check
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 10
+      period_seconds: 30
+      timeout_seconds: 3
+      success_threshold: 1
+      failure_threshold: 3
+
+    # Instance configuration (smallest size for MVP)
+    instance_count: 1
+    instance_size_slug: basic-xxs
+
+    # Internal port (no external routes for security)
+    internal_ports:
+      - 8080
