@@ -12,16 +12,17 @@ services:
 
     # GitHub source
     github:
-      repo: charliefisher/research-agent-mvp
+      repo: cfisher8565/research-agent-mvp
       branch: main
       deploy_on_push: true
 
     # Environment variables
     envs:
-      - key: CLAUDE_CODE_OAUTH_TOKEN
+      - key: ANTHROPIC_API_KEY
         scope: RUN_TIME
         type: SECRET
-        value: "YOUR_CLAUDE_OAUTH_TOKEN_HERE"
+        # Set this via: doctl apps update <APP_ID> after deployment
+        # Or via DigitalOcean Console → App → Settings → Environment Variables
       - key: PORT
         scope: RUN_TIME
         value: "8080"
@@ -45,6 +46,6 @@ services:
     instance_count: 1
     instance_size_slug: basic-xxs
 
-    # Internal port (no external routes for security)
-    internal_ports:
-      - 8080
+    # Routes (make publicly accessible for testing)
+    routes:
+      - path: /
