@@ -23,6 +23,28 @@ process.on('uncaughtException', (error) => {
 // Middleware
 app.use(express.json());
 
+// SSE header injection middleware for DigitalOcean nginx
+// CRITICAL: Prevents nginx from buffering SSE responses which causes 504 timeouts
+app.use((req, res, next) => {
+  const originalWriteHead = res.writeHead.bind(res);
+  res.writeHead = function(statusCode: number, reasonPhrase?: any, headers?: any) {
+    // Handle both (statusCode, headers) and (statusCode, reasonPhrase, headers) signatures
+    let finalHeaders = headers || (typeof reasonPhrase === 'object' ? reasonPhrase : {});
+
+    // Inject critical SSE headers for DigitalOcean nginx
+    finalHeaders['X-Accel-Buffering'] = 'no';  // Critical for DO nginx - prevents buffering
+    finalHeaders['Cache-Control'] = finalHeaders['Cache-Control'] || 'no-cache, no-transform';
+    finalHeaders['Connection'] = finalHeaders['Connection'] || 'keep-alive';
+
+    if (headers) {
+      return originalWriteHead(statusCode, reasonPhrase, finalHeaders);
+    } else {
+      return originalWriteHead(statusCode, finalHeaders);
+    }
+  };
+  next();
+});
+
 // Health check endpoint
 app.get('/health', async (req: Request, res: Response) => {
   // Check required environment variables
