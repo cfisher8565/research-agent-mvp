@@ -64,6 +64,146 @@ app.get('/health', async (req: Request, res: Response) => {
   });
 });
 
+// Test direct Anthropic API without SDK overhead
+app.post('/test-api', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+
+  try {
+    const { prompt } = req.body;
+
+    if (!prompt) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required field: prompt'
+      });
+    }
+
+    console.log(`[API Test] Starting direct Anthropic API call...`);
+
+    // Direct API call without SDK
+    const response = await axios.post(
+      'https://api.anthropic.com/v1/messages',
+      {
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 100,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ]
+      },
+      {
+        headers: {
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY || ''
+        },
+        timeout: 20000,
+        validateStatus: () => true
+      }
+    );
+
+    const elapsed = Date.now() - startTime;
+
+    console.log(`[API Test] Response received in ${elapsed}ms, status: ${response.status}`);
+
+    res.json({
+      success: response.status === 200,
+      status: response.status,
+      data: response.data,
+      metadata: {
+        elapsed_ms: elapsed
+      }
+    });
+
+  } catch (error: any) {
+    const elapsed = Date.now() - startTime;
+    console.error(`[API Test] Failed after ${elapsed}ms:`, error.message);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      code: error.code,
+      response: error.response?.data,
+      metadata: {
+        elapsed_ms: elapsed
+      }
+    });
+  }
+});
+
+// Test MCP gateway connectivity
+app.get('/test-mcp', async (req: Request, res: Response) => {
+  const startTime = Date.now();
+
+  try {
+    console.log(`[MCP Test] Testing gateway connectivity...`);
+
+    const mcpUrl = process.env.MCP_GATEWAY_URL || "https://mcp-infrastructure-rhvlk.ondigitalocean.app/mcp";
+
+    // Test health endpoint
+    const healthUrl = mcpUrl.replace('/mcp', '/health');
+    const healthResponse = await axios.get(healthUrl, {
+      timeout: 5000,
+      validateStatus: () => true
+    });
+
+    console.log(`[MCP Test] Health status: ${healthResponse.status}`);
+
+    // Test MCP tools/list with auth
+    const mcpResponse = await axios.post(
+      mcpUrl,
+      {
+        jsonrpc: "2.0",
+        method: "tools/list",
+        id: 1
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-MCP-Secret': process.env.MCP_SHARED_SECRET || ''
+        },
+        timeout: 10000,
+        validateStatus: () => true
+      }
+    );
+
+    console.log(`[MCP Test] Tools response status: ${mcpResponse.status}`);
+
+    const elapsed = Date.now() - startTime;
+
+    res.json({
+      success: true,
+      health: {
+        status: healthResponse.status,
+        data: healthResponse.data
+      },
+      mcp: {
+        status: mcpResponse.status,
+        data: mcpResponse.data,
+        toolCount: mcpResponse.data?.result?.tools?.length || 0
+      },
+      metadata: {
+        elapsed_ms: elapsed,
+        gatewayUrl: mcpUrl
+      }
+    });
+
+  } catch (error: any) {
+    const elapsed = Date.now() - startTime;
+    console.error(`[MCP Test] Failed after ${elapsed}ms:`, error.message);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      metadata: {
+        elapsed_ms: elapsed
+      }
+    });
+  }
+});
+
 // Debug endpoint - validate environment and MCP connectivity
 app.get('/debug', async (req: Request, res: Response) => {
   const fs = await import('fs');
@@ -195,11 +335,34 @@ app.post('/query', async (req: Request, res: Response) => {
 
     // Call Claude Agent SDK with native HTTP MCP support
     let finalResult = 'No result available';
+    let messageCount = 0;  // Declare outside try block for error access
 
     console.log(`[Query] Initializing Claude Agent SDK...`);
+
+    // Track SDK lifecycle events
+    const sdkEvents: string[] = [];
+
     const queryIterator = query({
       prompt: prompt,
       options: {
+        // Diagnostic hooks to capture SDK lifecycle
+        hooks: {
+          sessionStart: async (ctx: any) => {
+            const event = `[Hook:SessionStart] Session ${ctx.session_id || 'unknown'} initialized`;
+            sdkEvents.push(event);
+            console.log(event);
+          },
+          onError: async (errCtx: any) => {
+            const event = `[Hook:OnError] ${errCtx.error?.message || 'Unknown error'}`;
+            sdkEvents.push(event);
+            console.error(event, {
+              error: errCtx.error,
+              stack: errCtx.error?.stack,
+              sessionId: errCtx.session_id
+            });
+          }
+        },
+
         // Simplified system prompt - native HTTP MCP support
         systemPrompt: `You are a specialized Research Agent with expert knowledge of three powerful research tools:
 
@@ -257,17 +420,41 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
       }
     );
 
-    // Iterate with timeout protection
+    // Iterate with timeout protection and enhanced logging
     console.log(`[Query] Starting iteration...`);
+    let lastYieldTime = Date.now();
+
     for await (const message of timeoutIterator) {
-      console.log(`[Agent] Message received:`, { type: message.type, subtype: (message as any).subtype });
+      const now = Date.now();
+      const timeSinceLastYield = now - lastYieldTime;
+      messageCount++;
+
+      console.log(`[Agent] Message #${messageCount} (after ${timeSinceLastYield}ms):`, {
+        type: message.type,
+        subtype: (message as any).subtype,
+        hasResult: !!(message as any).result,
+        elapsedTotal: now - startTime
+      });
+
+      if (timeSinceLastYield > 8000) {
+        console.warn(`[Agent] Slow yield detected: ${timeSinceLastYield}ms between messages`);
+      }
+
+      lastYieldTime = now;
+
       // Context optimization: only capture the final result message
       if (message.type === 'result' && message.subtype === 'success') {
         finalResult = (message as any).result;
-        console.log('[Agent] Final result captured');
+        console.log('[Agent] Final result captured, length:', finalResult.length);
         break;
       }
+
+      if (message.type === 'error') {
+        console.error('[Agent] Error message:', (message as any).error);
+      }
     }
+
+    console.log(`[Query] Iterator completed. Total messages: ${messageCount}`);
 
     const elapsed = Date.now() - startTime;
     console.log(`[Query] Completed successfully in ${elapsed}ms`);
@@ -313,7 +500,9 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
       type: isTimeout ? 'timeout' : 'error',
       metadata: {
         elapsed_ms: elapsed,
-        timeout_threshold_ms: isTimeout ? TIMEOUTS.QUERY_TOTAL : undefined
+        timeout_threshold_ms: isTimeout ? TIMEOUTS.QUERY_TOTAL : undefined,
+        sdkEvents: sdkEvents,  // Include captured lifecycle events
+        messageCount: messageCount || 0
       }
     });
   }
