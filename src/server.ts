@@ -71,25 +71,25 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
         permissionMode: 'bypassPermissions',
 
         mcpServers: {
-          // Context7 - Library documentation
+          // Context7 - Library documentation (pre-installed)
           context7: {
             type: 'stdio',
-            command: 'npx',
-            args: ['-y', '@context7/mcp-server'],
+            command: 'node',
+            args: ['./node_modules/@context7/mcp-server/dist/index.js'],
             env: {
               CONTEXT7_API_KEY: process.env.CONTEXT7_API_KEY || ''
             }
           },
-          // Perplexity - AI-powered research (official package)
+          // Perplexity - AI-powered research (pre-installed)
           perplexity: {
             type: 'stdio',
-            command: 'npx',
-            args: ['-y', '@perplexity-ai/mcp-server'],
+            command: 'node',
+            args: ['./node_modules/@perplexity-ai/mcp-server/dist/index.js'],
             env: {
               PERPLEXITY_API_KEY: process.env.PERPLEXITY_API_KEY || ''
             }
           },
-          // BrightData - Web scraping and SERP
+          // BrightData - Web scraping and SERP (pre-installed)
           brightdata: {
             type: 'stdio',
             command: 'npx',
