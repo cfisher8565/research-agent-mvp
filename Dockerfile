@@ -1,5 +1,8 @@
 FROM node:22-alpine
 
+# Cache-bust argument - changes every build
+ARG CACHE_BUST=1
+
 WORKDIR /app
 
 # Set HOME directory for SDK cli.js subprocess
