@@ -4,7 +4,7 @@ import { withTimeout } from './utils/timeout';
 import axios from 'axios';
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = Number(process.env.PORT) || 8080;
 
 // Timeout configuration (DigitalOcean App Platform has 60s load balancer timeout)
 const TIMEOUTS = {
