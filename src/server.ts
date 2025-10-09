@@ -151,7 +151,7 @@ app.get('/test-mcp', async (req: Request, res: Response) => {
     }
 
     // Test health endpoint
-    const healthUrl = mcpUrl.replace('/mcp', '/health');
+    const healthUrl = mcpUrl.replace(/\/mcp$/, '/health');
     const healthResponse = await axios.get(healthUrl, {
       timeout: 5000,
       validateStatus: () => true
