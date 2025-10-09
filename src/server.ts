@@ -6,9 +6,10 @@ import axios from 'axios';
 const app = express();
 const PORT = Number(process.env.PORT) || 8080;
 
-// Timeout configuration (DigitalOcean App Platform has 60s load balancer timeout)
+// Timeout configuration (DigitalOcean App Platform load balancer timeout handling)
+// Increased from 25s to 120s to allow complex queries to complete
 const TIMEOUTS = {
-  QUERY_TOTAL: 25000,  // 25 seconds (leave 5s buffer for DO gateway timeout at 30s)
+  QUERY_TOTAL: 120000,  // 120 seconds (2 minutes for complex research tasks)
 };
 
 // Global error handlers
@@ -505,7 +506,7 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
 // Start server
 // CRITICAL: Bind to 0.0.0.0 for container networking (not localhost)
 // Containers need to listen on all interfaces for load balancer connectivity
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Research Agent MVP running on port ${PORT}`);
   console.log(`📍 Listening on 0.0.0.0:${PORT} (all network interfaces)`);
   console.log(`📍 Health: http://localhost:${PORT}/health`);
@@ -515,3 +516,11 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`📍 Query:  http://localhost:${PORT}/query`);
   console.log(`⏱️  Query Timeout: ${TIMEOUTS.QUERY_TOTAL}ms`);
 });
+
+// Configure HTTP server timeouts to prevent load balancer 503 errors
+// These must be >= application timeouts to allow queries to complete
+server.setTimeout(120000);        // 120 seconds - overall socket timeout
+server.keepAliveTimeout = 120000; // 120 seconds - keep connection alive during processing
+server.headersTimeout = 125000;   // 125 seconds - slightly more than keepAlive (recommended)
+
+console.log(`⏱️  Server Timeouts: socket=120s, keepAlive=120s, headers=125s`);
