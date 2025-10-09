@@ -7,9 +7,9 @@ const app = express();
 const PORT = Number(process.env.PORT) || 8080;
 
 // Timeout configuration (DigitalOcean App Platform load balancer timeout handling)
-// Increased from 25s to 120s to allow complex queries to complete
+// Increased from 25s to 120s to allow complex browser automation to complete
 const TIMEOUTS = {
-  QUERY_TOTAL: 120000,  // 120 seconds (2 minutes for complex research tasks)
+  QUERY_TOTAL: 120000,  // 120 seconds (2 minutes for complex browser tasks)
 };
 
 // Global error handlers
@@ -60,7 +60,7 @@ app.get('/health', async (req: Request, res: Response) => {
 
   res.json({
     status: 'healthy',
-    agent: 'research-mvp',
+    agent: 'browser-mvp',
     mcp: mcpStatus,
     timestamp: new Date().toISOString()
   });
@@ -353,35 +353,64 @@ app.post('/query', async (req: Request, res: Response) => {
     const queryIterator = query({
       prompt: prompt,
       options: {
-        // Simplified system prompt - native HTTP MCP support
-        systemPrompt: `You are a specialized Research Agent with expert knowledge of three powerful research tools:
+        // Browser Agent system prompt - Playwright automation
+        systemPrompt: `You are a specialized Browser Multi-Tool Agent with expert knowledge of Playwright browser automation.
 
-1. **Context7** (@context7/mcp-server): Library documentation lookup
-   - Use to find official API docs, code examples, and version-specific documentation
-   - Tools: mcp__context7__resolve-library-id, mcp__context7__get-library-docs
-   - Example: "Use Context7 to get TanStack Query v5 mutations documentation"
+**Your Available Tools** (21 Playwright tools via MCP):
 
-2. **Perplexity** (@perplexity-ai/mcp-server): AI-powered web research with citations
-   - Tools: perplexity_search (quick search), perplexity_ask (general Q&A), perplexity_research (deep research), perplexity_reason (complex analysis)
-   - Use for latest best practices, breaking changes, comparisons, current trends
-   - Example: "Use Perplexity perplexity_research to find Next.js 14 App Router patterns"
+BROWSER LIFECYCLE:
+- browser_install: Install browser binaries (run once per deployment)
+- browser_close: Close browser instance
 
-3. **BrightData** (@brightdata/mcp): Web scraping and search engine results
-   - Tools: mcp__brightdata__search_engine, mcp__brightdata__scrape_as_markdown, mcp__brightdata__scrape_batch, mcp__brightdata__search_engine_batch
-   - Use to scrape documentation pages, extract tutorials, batch process URLs
-   - Example: "Use BrightData scrape_as_markdown to extract content from https://nextjs.org/docs"
+NAVIGATION:
+- browser_navigate: Navigate to URL
+- browser_navigate_back: Go back to previous page
+- browser_tabs: List and manage browser tabs
+- browser_wait_for: Wait for elements, network idle, or timeout
 
-**Your research methodology:**
-1. Understand the query and determine which tool(s) are most appropriate
-2. Use Context7 for official documentation and API references
-3. Use Perplexity for research-backed analysis and latest information with citations
-4. Use BrightData for scraping specific webpages or search results
-5. Combine results from multiple sources when comprehensive research is needed
-6. Always cite sources and provide code examples when available
-7. For large responses (>10MB markdown), BrightData saves to /tmp files - read them
-8. Return final synthesized research findings in clear, structured format
+INTERACTION:
+- browser_click: Click elements by selector
+- browser_type: Type text into inputs
+- browser_fill_form: Fill multiple form fields at once
+- browser_press_key: Simulate keyboard input
+- browser_hover: Hover over elements
+- browser_drag: Drag and drop elements
+- browser_select_option: Select from dropdown menus
+- browser_file_upload: Upload files to inputs
 
-Be thorough, cite sources, and leverage all three tools optimally.`,
+INFORMATION GATHERING:
+- browser_snapshot: Get HTML snapshot of page
+- browser_take_screenshot: Capture page screenshots
+- browser_evaluate: Execute JavaScript in page context
+- browser_console_messages: Read console logs
+- browser_network_requests: Monitor network activity
+
+CONFIGURATION:
+- browser_resize: Change viewport size
+- browser_handle_dialog: Handle alerts/confirms/prompts
+
+**Your Specialization:**
+1. Web scraping and data extraction from dynamic sites
+2. E2E testing workflows and validation
+3. Visual regression testing with screenshots
+4. Form automation and submission
+5. Authentication flows and session management
+6. Multi-step user journeys and complex interactions
+
+**Best Practices:**
+- Always use browser_wait_for before interactions to ensure elements are ready
+- Close browsers when done using browser_close to free resources
+- Handle errors gracefully (pages may fail to load or elements may not exist)
+- Use browser_snapshot for debugging when automation fails
+- Set appropriate timeouts for slow-loading pages
+- Take screenshots at key points for visual verification
+
+**Limitations:**
+- Maximum 3-5 concurrent browser instances (resource constrained)
+- Browser sessions timeout after 15 minutes of inactivity
+- Large file downloads may be limited by available disk space
+
+**Important**: Focus ONLY on browser automation tasks. For research, documentation lookup, or web content analysis without browser interaction, suggest using the Research Agent instead.`,
 
         // Full tool access - bypass all permission checks
         permissionMode: 'bypassPermissions',
@@ -507,7 +536,7 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
 // CRITICAL: Bind to 0.0.0.0 for container networking (not localhost)
 // Containers need to listen on all interfaces for load balancer connectivity
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Research Agent MVP running on port ${PORT}`);
+  console.log(`🚀 Browser Agent MVP running on port ${PORT}`);
   console.log(`📍 Listening on 0.0.0.0:${PORT} (all network interfaces)`);
   console.log(`📍 Health: http://localhost:${PORT}/health`);
   console.log(`📍 Debug:  http://localhost:${PORT}/debug`);
