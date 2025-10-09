@@ -503,9 +503,15 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
 });
 
 // Start server
-app.listen(PORT, () => {
+// CRITICAL: Bind to 0.0.0.0 for container networking (not localhost)
+// Containers need to listen on all interfaces for load balancer connectivity
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Research Agent MVP running on port ${PORT}`);
+  console.log(`📍 Listening on 0.0.0.0:${PORT} (all network interfaces)`);
   console.log(`📍 Health: http://localhost:${PORT}/health`);
+  console.log(`📍 Debug:  http://localhost:${PORT}/debug`);
+  console.log(`📍 Test API: http://localhost:${PORT}/test-api`);
+  console.log(`📍 Test MCP: http://localhost:${PORT}/test-mcp`);
   console.log(`📍 Query:  http://localhost:${PORT}/query`);
   console.log(`⏱️  Query Timeout: ${TIMEOUTS.QUERY_TOTAL}ms`);
 });
