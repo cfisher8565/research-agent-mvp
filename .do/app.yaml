@@ -21,8 +21,11 @@ services:
       - key: ANTHROPIC_API_KEY
         scope: RUN_TIME
         type: SECRET
-        # Set this via: doctl apps update <APP_ID> after deployment
-        # Or via DigitalOcean Console → App → Settings → Environment Variables
+        # CRITICAL: Encrypted SECRETs may not propagate to SDK subprocess correctly
+        # If subprocess crash persists, consider using plain text value (less secure):
+        # type: RUN_TIME (without SECRET type)
+        # value: "sk-ant-api03-..."
+        # Current: Encrypted SECRET (more secure, may cause subprocess access issues)
       - key: PORT
         scope: RUN_TIME
         value: "8080"

@@ -9,7 +9,8 @@ WORKDIR /app
 ENV HOME=/app
 
 # Create writable directories for SDK temporary files and configuration
-RUN mkdir -p /tmp /app/.claude && chmod 1777 /tmp
+# CRITICAL FIX: SDK subprocess needs writable .claude directory with proper ownership
+RUN mkdir -p /tmp /app/.claude && chmod 1777 /tmp && chown -R node:node /app/.claude
 
 # Copy package files
 COPY package*.json ./
@@ -26,6 +27,10 @@ RUN npm run build
 
 # Remove devDependencies after build
 RUN npm prune --production
+
+# CRITICAL FIX: Ensure .claude directory is writable for SDK subprocess
+# The SDK spawns cli.js which needs to write config/cache to ~/.claude
+RUN chmod -R 777 /app/.claude && mkdir -p /tmp && chmod 1777 /tmp
 
 # Expose port
 EXPOSE 8080
