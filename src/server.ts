@@ -141,7 +141,14 @@ app.get('/test-mcp', async (req: Request, res: Response) => {
   try {
     console.log(`[MCP Test] Testing gateway connectivity...`);
 
-    const mcpUrl = process.env.MCP_GATEWAY_URL || "https://mcp-infrastructure-rhvlk.ondigitalocean.app/mcp";
+    // BUGFIX: Correct typo in environment variable (health-infrastructure → mcp-infrastructure)
+    let mcpUrl = process.env.MCP_GATEWAY_URL || "https://mcp-infrastructure-rhvlk.ondigitalocean.app/mcp";
+
+    // Fix typo if present
+    if (mcpUrl.includes('health-infrastructure')) {
+      console.warn('[MCP Test] Detected typo in MCP_GATEWAY_URL, correcting...');
+      mcpUrl = mcpUrl.replace('health-infrastructure', 'mcp-infrastructure');
+    }
 
     // Test health endpoint
     const healthUrl = mcpUrl.replace('/mcp', '/health');
@@ -383,7 +390,9 @@ Be thorough, cite sources, and leverage all three tools optimally.`,
         mcpServers: {
           "mcp-gateway": {
             type: "http",
-            url: process.env.MCP_GATEWAY_URL || "https://mcp-infrastructure-rhvlk.ondigitalocean.app/mcp",
+            // BUGFIX: Correct typo in environment variable
+            url: (process.env.MCP_GATEWAY_URL || "https://mcp-infrastructure-rhvlk.ondigitalocean.app/mcp")
+              .replace('health-infrastructure', 'mcp-infrastructure'),
             headers: {
               "X-MCP-Secret": process.env.MCP_SHARED_SECRET || ""
             }
