@@ -1,0 +1,7 @@
+// CORRECT: Replace only at the end of the URL
+const healthUrl = mcpUrl.replace(/\/mcp$/, '/health');
+
+// OR use URL parsing:
+const healthUrl2 = new URL(mcpUrl);
+healthUrl2.pathname = healthUrl2.pathname.replace(/\/mcp$/, '/health');
+const finalHealthUrl = healthUrl2.toString();

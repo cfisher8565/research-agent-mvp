@@ -1,5 +1,7 @@
 import express, { Request, Response } from 'express';
-import { runAgentWithTools } from './agent-direct';
+import { runAgentWithToolsAndContext } from './agent-direct-enhanced';
+import { sessionManager } from './session-manager';
+import { RESEARCH_AGENT_SYSTEM_PROMPT } from './system-prompts';
 import axios from 'axios';
 
 const app = express();
@@ -59,10 +61,21 @@ app.get('/health', async (req: Request, res: Response) => {
 
   res.json({
     status: 'healthy',
-    agent: 'browser-mvp',
+    agent: 'research-mvp',
     mcp: mcpStatus,
+    sessions: sessionManager.stats(),
     timestamp: new Date().toISOString()
   });
+});
+
+// Session management endpoints
+app.get('/sessions', (req: Request, res: Response) => {
+  res.json(sessionManager.stats());
+});
+
+app.delete('/sessions/:sessionId', (req: Request, res: Response) => {
+  sessionManager.clear(req.params.sessionId);
+  res.json({ success: true, message: 'Session cleared' });
 });
 
 // Test direct Anthropic API without SDK overhead
@@ -304,20 +317,12 @@ app.get('/debug', async (req: Request, res: Response) => {
   res.json(diagnostics);
 });
 
-// Main query endpoint with timeout protection
+// Main query endpoint with session management and context awareness
 app.post('/query', async (req: Request, res: Response) => {
   const startTime = Date.now();
 
-  // CRITICAL FIX: Clean debugger environment variables that interfere with subprocess
-  // GitHub Issue #4619: VSCode debugger variables cause "exit code 1" failures
-  const originalNodeOptions = process.env.NODE_OPTIONS;
-  const originalVscodeOptions = process.env.VSCODE_INSPECTOR_OPTIONS;
-
-  // Declare variables outside try block for error handler access
-  let messageCount = 0;
-
   try {
-    const { prompt } = req.body;
+    const { prompt, sessionId, context } = req.body;
 
     if (!prompt) {
       return res.status(400).json({
@@ -326,66 +331,65 @@ app.post('/query', async (req: Request, res: Response) => {
       });
     }
 
-    console.log(`[Query] Received: ${prompt.substring(0, 100)}...`);
+    // Use sessionId or generate one
+    const sid = sessionId || `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    console.log(`[Query] Environment check:`, {
-      apiKey: !!process.env.ANTHROPIC_API_KEY,
-      mcpGateway: !!process.env.MCP_GATEWAY_URL,
-      mcpSecret: !!process.env.MCP_SHARED_SECRET
-    });
+    console.log(`[Query] Session: ${sid}, Prompt: ${prompt.substring(0, 100)}...`);
 
-    // Call direct Anthropic API with MCP tools (bypasses broken SDK)
-    console.log(`[Query] Running agent with direct API + MCP tools...`);
+    // Update session context if provided (from Claude Code)
+    if (context) {
+      sessionManager.updateContext(sid, context);
+      console.log(`[Session] Context updated:`, Object.keys(context));
+    }
 
-    const finalResult = await runAgentWithTools(prompt);
+    // Get session history for multi-turn conversations
+    const history = sessionManager.getHistory(sid);
+    const sessionContext = sessionManager.getContext(sid);
+
+    console.log(`[Session] History: ${history.length} messages, Context keys: ${Object.keys(sessionContext).length}`);
+
+    // Add user message to session
+    sessionManager.addMessage(sid, 'user', prompt);
+
+    // Call agent with full context
+    console.log(`[Query] Running Research Agent with session context...`);
+
+    const finalResult = await runAgentWithToolsAndContext(
+      prompt,
+      history,
+      RESEARCH_AGENT_SYSTEM_PROMPT,
+      sessionContext
+    );
+
+    // Add assistant response to session
+    sessionManager.addMessage(sid, 'assistant', finalResult);
 
     const elapsed = Date.now() - startTime;
-    console.log(`[Query] Completed successfully in ${elapsed}ms`);
-
-    // Restore original environment variables
-    if (originalNodeOptions) process.env.NODE_OPTIONS = originalNodeOptions;
-    if (originalVscodeOptions) process.env.VSCODE_INSPECTOR_OPTIONS = originalVscodeOptions;
+    console.log(`[Query] Completed in ${elapsed}ms`);
 
     res.json({
       success: true,
       data: {
-        result: finalResult
+        result: finalResult,
+        sessionId: sid
       },
       metadata: {
         elapsed_ms: elapsed,
-        messageCount: messageCount
+        historyLength: history.length + 2 // +2 for current exchange
       }
     });
 
   } catch (error: any) {
-    // Restore original environment variables on error too
-    if (originalNodeOptions) process.env.NODE_OPTIONS = originalNodeOptions;
-    if (originalVscodeOptions) process.env.VSCODE_INSPECTOR_OPTIONS = originalVscodeOptions;
     const elapsed = Date.now() - startTime;
     console.error(`[Error] Query failed after ${elapsed}ms`);
     console.error(`[Error] Message:`, error.message);
-    console.error(`[Error] Name:`, error.name);
     console.error(`[Error] Stack:`, error.stack);
 
-    // Log additional context for SDK errors
-    if (error.message?.includes('Claude Code process')) {
-      console.error(`[Error] SDK subprocess failure detected`);
-      console.error(`[Error] Check if cli.js can access ANTHROPIC_API_KEY`);
-      console.error(`[Error] Check if HOME directory is writable`);
-    }
-
-    // Distinguish timeout errors from other errors
-    const isTimeout = error.message?.includes('timed out');
-    const statusCode = isTimeout ? 408 : 500;
-
-    res.status(statusCode).json({
+    res.status(500).json({
       success: false,
       error: error.message || 'Internal server error',
-      type: isTimeout ? 'timeout' : 'error',
       metadata: {
-        elapsed_ms: elapsed,
-        timeout_threshold_ms: isTimeout ? TIMEOUTS.QUERY_TOTAL : undefined,
-        messageCount: messageCount
+        elapsed_ms: elapsed
       }
     });
   }
