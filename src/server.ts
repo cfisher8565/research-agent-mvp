@@ -1,6 +1,5 @@
 import express, { Request, Response } from 'express';
-import { query } from '@anthropic-ai/claude-agent-sdk';
-import { withTimeout } from './utils/timeout';
+import { runAgentWithTools } from './agent-direct';
 import axios from 'axios';
 
 const app = express();
@@ -329,156 +328,16 @@ app.post('/query', async (req: Request, res: Response) => {
 
     console.log(`[Query] Received: ${prompt.substring(0, 100)}...`);
 
-    // Clean debugger variables before SDK subprocess spawn
-    delete process.env.NODE_OPTIONS;
-    delete process.env.VSCODE_INSPECTOR_OPTIONS;
-
     console.log(`[Query] Environment check:`, {
       apiKey: !!process.env.ANTHROPIC_API_KEY,
       mcpGateway: !!process.env.MCP_GATEWAY_URL,
-      mcpSecret: !!process.env.MCP_SHARED_SECRET,
-      home: process.env.HOME,
-      cwd: process.cwd(),
-      cleanedDebugVars: {
-        nodeOptions: originalNodeOptions ? 'removed' : 'not set',
-        vscodeOptions: originalVscodeOptions ? 'removed' : 'not set'
-      }
+      mcpSecret: !!process.env.MCP_SHARED_SECRET
     });
 
-    // Call Claude Agent SDK with native HTTP MCP support
-    let finalResult = 'No result available';
+    // Call direct Anthropic API with MCP tools (bypasses broken SDK)
+    console.log(`[Query] Running agent with direct API + MCP tools...`);
 
-    console.log(`[Query] Initializing Claude Agent SDK...`);
-
-    const queryIterator = query({
-      prompt: prompt,
-      options: {
-        // Browser Agent system prompt - Playwright automation
-        systemPrompt: `You are a specialized Browser Multi-Tool Agent with expert knowledge of Playwright browser automation.
-
-**Your Available Tools** (21 Playwright tools via MCP):
-
-BROWSER LIFECYCLE:
-- browser_install: Install browser binaries (run once per deployment)
-- browser_close: Close browser instance
-
-NAVIGATION:
-- browser_navigate: Navigate to URL
-- browser_navigate_back: Go back to previous page
-- browser_tabs: List and manage browser tabs
-- browser_wait_for: Wait for elements, network idle, or timeout
-
-INTERACTION:
-- browser_click: Click elements by selector
-- browser_type: Type text into inputs
-- browser_fill_form: Fill multiple form fields at once
-- browser_press_key: Simulate keyboard input
-- browser_hover: Hover over elements
-- browser_drag: Drag and drop elements
-- browser_select_option: Select from dropdown menus
-- browser_file_upload: Upload files to inputs
-
-INFORMATION GATHERING:
-- browser_snapshot: Get HTML snapshot of page
-- browser_take_screenshot: Capture page screenshots
-- browser_evaluate: Execute JavaScript in page context
-- browser_console_messages: Read console logs
-- browser_network_requests: Monitor network activity
-
-CONFIGURATION:
-- browser_resize: Change viewport size
-- browser_handle_dialog: Handle alerts/confirms/prompts
-
-**Your Specialization:**
-1. Web scraping and data extraction from dynamic sites
-2. E2E testing workflows and validation
-3. Visual regression testing with screenshots
-4. Form automation and submission
-5. Authentication flows and session management
-6. Multi-step user journeys and complex interactions
-
-**Best Practices:**
-- Always use browser_wait_for before interactions to ensure elements are ready
-- Close browsers when done using browser_close to free resources
-- Handle errors gracefully (pages may fail to load or elements may not exist)
-- Use browser_snapshot for debugging when automation fails
-- Set appropriate timeouts for slow-loading pages
-- Take screenshots at key points for visual verification
-
-**Limitations:**
-- Maximum 3-5 concurrent browser instances (resource constrained)
-- Browser sessions timeout after 15 minutes of inactivity
-- Large file downloads may be limited by available disk space
-
-**Important**: Focus ONLY on browser automation tasks. For research, documentation lookup, or web content analysis without browser interaction, suggest using the Research Agent instead.`,
-
-        // Full tool access - bypass all permission checks
-        permissionMode: 'bypassPermissions',
-
-        // Native HTTP MCP support (Claude Agent SDK Oct 1, 2025+)
-        // Single gateway aggregates all MCP tools (Context7, Perplexity, BrightData)
-        mcpServers: {
-          "mcp-gateway": {
-            type: "http",
-            // BUGFIX: Correct typo in environment variable
-            url: (process.env.MCP_GATEWAY_URL || "https://mcp-infrastructure-rhvlk.ondigitalocean.app/mcp")
-              .replace('health-infrastructure', 'mcp-infrastructure'),
-            headers: {
-              "X-MCP-Secret": process.env.MCP_SHARED_SECRET || ""
-            }
-          }
-        }
-      }
-    });
-
-    // Wrap with timeout protection
-    console.log(`[Query] Wrapping with ${TIMEOUTS.QUERY_TOTAL}ms timeout...`);
-    const timeoutIterator = withTimeout(
-      queryIterator,
-      TIMEOUTS.QUERY_TOTAL,
-      () => {
-        console.log(`[Query] Timeout triggered after ${TIMEOUTS.QUERY_TOTAL}ms, aborting...`);
-      }
-    );
-
-    // Iterate with timeout protection and enhanced logging
-    console.log(`[Query] Starting iteration...`);
-    let lastYieldTime = Date.now();
-
-    for await (const message of timeoutIterator) {
-      const now = Date.now();
-      const timeSinceLastYield = now - lastYieldTime;
-      messageCount++;
-
-      console.log(`[Agent] Message #${messageCount} (after ${timeSinceLastYield}ms):`, {
-        type: message.type,
-        subtype: (message as any).subtype,
-        hasResult: !!(message as any).result,
-        elapsedTotal: now - startTime
-      });
-
-      if (timeSinceLastYield > 8000) {
-        console.warn(`[Agent] Slow yield detected: ${timeSinceLastYield}ms between messages`);
-      }
-
-      lastYieldTime = now;
-
-      // Context optimization: only capture the final result message
-      if (message.type === 'result' && message.subtype === 'success') {
-        finalResult = (message as any).result;
-        console.log('[Agent] Final result captured, length:', finalResult.length);
-        break;
-      }
-
-      if (message.type === 'stream_event') {
-        const streamEvent = message as any;
-        if (streamEvent.event?.type === 'error') {
-          console.error('[Agent] Stream error event:', streamEvent.event);
-        }
-      }
-    }
-
-    console.log(`[Query] Iterator completed. Total messages: ${messageCount}`);
+    const finalResult = await runAgentWithTools(prompt);
 
     const elapsed = Date.now() - startTime;
     console.log(`[Query] Completed successfully in ${elapsed}ms`);
